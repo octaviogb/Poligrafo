@@ -28,14 +28,14 @@ Você tem que ter o `go 1.14+` instalado na sua máquina
 
 Compile e execute o `main`
 
-```sh
+```
 /> go build main.go
 /> ./main <url do teste rodando>
 ```
 
 Você pode só rodar, sem compilar
 
-```sh
+```
 /> go run main.go -- <url do teste rodando>
 ```
 
@@ -43,7 +43,7 @@ _(Tô seriamente pensando em fazer um actions pra rodar isso... mas segura a per
 
 Ah, e como uso Windows (sim, eu uso Windows), você pode até colocar o resultado direto no clipboard, no Powershell (não vamos entrar nessa conversa, ok?!)
 
-```ps
+```
 PS /> go run main.go -- <url do teste rodando> | Set-Clipboard
 ```
 
