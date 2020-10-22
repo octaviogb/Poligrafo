@@ -1,5 +1,7 @@
 # Poligrafo
 
+![Go](https://github.com/octaviogb/Poligrafo/workflows/Go/badge.svg?event=workflow_dispatch)
+
 Validador do contrato do teste [seja-um-guia-back](https://github.com/GuiaBolso/seja-um-guia-back)
 
 # Motivação
