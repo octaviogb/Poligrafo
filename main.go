@@ -1,8 +1,10 @@
 package main
 
 import (
+	"crypto/md5"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -34,7 +36,7 @@ type Application struct {
 }
 
 func (a Application) tryAccess() error {
-	_, err := http.Get(a.url + "/9505/transactions/2020/02")
+	_, err := http.Get(a.url + "/1000/transactions/2020/02")
 
 	return err
 }
@@ -55,13 +57,13 @@ func createResult(err error, message string, results *[]Result) []Result {
 
 func (a Application) verifyContract() []Result {
 	var results []Result
-	url := a.url + "/9505/transacoes/2020/02"
+	url := a.url + "/1000/transacoes/2020/02"
 	results = createResult(fmt.Errorf("%s", url), "Vou pegar transacoes aqui", &results)
 
 	result, err := http.Get(url)
 
 	if err != nil {
-		results = createResult(err, "Nao consegui acessar /9505/transactions/2020/02", &results)
+		results = createResult(err, "Nao consegui acessar /1000/transactions/2020/02", &results)
 		return results
 	}
 
@@ -103,13 +105,15 @@ func (a Application) verifyContract() []Result {
 		results = createResult(fmt.Errorf("%s", description), "Descricao vazia ou nao consegui ler", &results)
 	}
 
+	var totalTransactions float64
+	totalTransactions = float64(len(transactions))
 	readabilityScore := 0.0
-	for _, transaction := range transactions[:3] {
+	for _, transaction := range transactions {
 		doc := summarize.NewDocument(transaction.Description)
 		readabilityScore += doc.SMOG()
 	}
-	if readabilityScore < 30 {
-		results = createResult(fmt.Errorf("Score de legibilidade SMOG %f", readabilityScore/3), "Nao parece que da pra humano ler", &results)
+	if readabilityScore < totalTransactions*10 {
+		results = createResult(fmt.Errorf("Score de legibilidade SMOG %.00f para %.00f transacoes", readabilityScore/totalTransactions, totalTransactions), "Nao parece que da pra humano ler", &results)
 	}
 
 	for _, transaction := range transactions {
@@ -117,7 +121,7 @@ func (a Application) verifyContract() []Result {
 		tm := time.Unix(ts, 0)
 		month := tm.Month()
 		if month != 2 {
-			results = createResult(fmt.Errorf("%s %d", tm, ts), "Tem uma transacao com mes errado", &results)
+			results = createResult(fmt.Errorf("%d", month), "Tem uma transacao com mes errado", &results)
 		}
 	}
 
@@ -178,7 +182,7 @@ func (a Application) verifyContract() []Result {
 }
 
 func (a Application) request(id, year, month int) (int, string, error) {
-	url := fmt.Sprintf("%s/%d/transacoes/%d/%d", a.url, id, year, month)
+	url := fmt.Sprintf("%s/%d/transacoes/%04d/%02d", a.url, id, year, month)
 	response, err := http.Get(url)
 	if err != nil {
 		return 0, "", err
@@ -190,28 +194,48 @@ func (a Application) request(id, year, month int) (int, string, error) {
 	return response.StatusCode, string(data), err
 }
 
+func hashit(input string) string {
+	h := md5.New()
+	io.WriteString(h, input)
+	s := fmt.Sprintf("%X", h.Sum(nil))
+	return string(s)
+}
+
 func (a Application) verifyMultiRequestRules() []Result {
 	var results []Result
 
 	// two same requests must return same value
-	status1, resp1, err := a.request(9505, 2020, 2)
+	status1, resp1, err := a.request(1000, 2020, 2)
 	if err != nil {
-		results = createResult(err, "Impossivel obter 9505 2020 2 1x", &results)
+		results = createResult(err, "Impossivel obter 1000 2020 2 1x", &results)
 	}
 	if status1 != 200 {
-		results = createResult(fmt.Errorf("%d", status1), "Status incorreto 1x", &results)
+		results = createResult(fmt.Errorf("%d, %s", status1, resp1), "Status incorreto 1x", &results)
 	}
-	status2, resp2, err := a.request(9505, 2020, 2)
+	status2, resp2, err := a.request(1000, 2020, 2)
 	if err != nil {
-		results = createResult(err, "Impossivel obter 9505 2020 2 2x", &results)
+		results = createResult(err, "Impossivel obter 1000 2020 2 2x", &results)
 	}
 	if status2 != 200 {
-		results = createResult(fmt.Errorf("%d", status2), "Status incorreto 2x", &results)
+		results = createResult(fmt.Errorf("%d, %s", status2, resp2), "Status incorreto 2x", &results)
 	}
 	if resp1 != resp2 {
-		results = createResult(fmt.Errorf(""), "Duas requisicoes diferentes para os mesmos parmetros", &results)
+		results = createResult(fmt.Errorf("Hashes: %s | %s", hashit(resp1), hashit(resp2)), "Duas requisicoes diferentes para os mesmos parmetros", &results)
 	}
 
+	// valid ids
+	status1, _, _ = a.request(9505, 2020, 20)
+	if status1 != 200 {
+		results = createResult(fmt.Errorf("%d", status1), "Id 9505 valido retornou", &results)
+	}
+	status1, _, _ = a.request(10000, 2020, 20)
+	if status1 != 200 {
+		results = createResult(fmt.Errorf("%d", status1), "Id 10000 valido retornou", &results)
+	}
+	status1, _, _ = a.request(999999, 2020, 20)
+	if status1 != 200 {
+		results = createResult(fmt.Errorf("%d", status1), "Id 999999 valido retornou", &results)
+	}
 	// invalid ids
 	status1, _, _ = a.request(100, 2020, 20)
 	if status1 != 400 {
@@ -230,16 +254,16 @@ func (a Application) verifyMultiRequestRules() []Result {
 		results = createResult(fmt.Errorf("%d", status1), "Id 1000001 invalido nao retornou 400", &results)
 	}
 	// invalid years
-	status1, _, _ = a.request(9505, -2, 20)
+	status1, _, _ = a.request(1000, -2, 20)
 	if status1 != 400 {
 		results = createResult(fmt.Errorf("%d", status1), "Ano -2 invalido nao retornou 400", &results)
 	}
 	// invalid months
-	status1, _, _ = a.request(9505, 2020, 15)
+	status1, _, _ = a.request(1000, 2020, 15)
 	if status1 != 400 {
 		results = createResult(fmt.Errorf("%d", status1), "Mês 15 invalido nao retornou 400", &results)
 	}
-	status1, _, _ = a.request(9505, 2020, 0)
+	status1, _, _ = a.request(1000, 2020, 0)
 	if status1 != 400 {
 		results = createResult(fmt.Errorf("%d", status1), "Mês 0 invalido nao retornou 400", &results)
 	}
@@ -247,7 +271,7 @@ func (a Application) verifyMultiRequestRules() []Result {
 	for year := 2010; year <= 2020; year++ {
 		duplicated := 0.0
 		for month := 1; month <= 12; month++ {
-			status, data, _ := a.request(9505, year, month)
+			status, data, _ := a.request(1000, year, month)
 			if status != 200 {
 				continue
 			}
